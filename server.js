@@ -10,30 +10,29 @@ const CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
 const REFRESH_TOKEN = (process.env.GOOGLE_REFRESH_TOKEN || "").trim();
 const DRIVE_FOLDER_ID = (process.env.DRIVE_FOLDER_ID || "").trim();
 const PORT = Number(process.env.PORT || 8080);
+
 if (!CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN || !DRIVE_FOLDER_ID) {
   console.error("Missing required env vars. Check .env");
   process.exit(1);
 }
 
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173", // Vite dev
-      "https://engagment-zozo-yoyo.vercel.app", // <-- replace with your real URL
-    ],
-    methods: ["POST", "GET", "OPTIONS"],
-  })
-);
 console.log("[CFG] client_id:", CLIENT_ID);
 console.log("[CFG] secret?", !!CLIENT_SECRET, "refresh?", !!REFRESH_TOKEN);
 
-const app = express();
+const app = express(); // ✅ create app first
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "https://engagment-zozo-yoyo.vercel.app"],
+    methods: ["POST", "GET", "OPTIONS"],
+  })
+);
+
 const upload = multer({ storage: multer.memoryStorage() });
 
 const oauth2 = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
 oauth2.setCredentials({ refresh_token: REFRESH_TOKEN });
 
-const drive = google.drive({ version: "v3", auth: oauth2 });
+// ✅ fail fast if auth is misconfigured
 (async () => {
   try {
     const { token } = await oauth2.getAccessToken();
@@ -43,22 +42,21 @@ const drive = google.drive({ version: "v3", auth: oauth2 });
     process.exit(1);
   }
 })();
-// health
+
+const drive = google.drive({ version: "v3", auth: oauth2 });
+
 app.get("/", (_, res) => res.send("Drive uploader is running."));
 
-// POST /upload  (multipart/form-data)
 app.post("/upload", upload.array("files", 50), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ ok: false, error: "No files uploaded" });
     }
 
-    // Optional subfolder name under DRIVE_FOLDER_ID
     const subfolderName = (req.body.subfolderName || "").trim();
     let parentId = DRIVE_FOLDER_ID;
-    if (subfolderName) {
+    if (subfolderName)
       parentId = await ensureSubfolder(DRIVE_FOLDER_ID, subfolderName);
-    }
 
     const results = [];
     for (const f of req.files) {
@@ -72,8 +70,15 @@ app.post("/upload", upload.array("files", 50), async (req, res) => {
         requestBody: fileMetadata,
         media,
         fields: "id, name, webViewLink, webContentLink",
-        supportsAllDrives: true, // harmless for My Drive; needed if parent is a Shared Drive
+        supportsAllDrives: true,
       });
+
+      // Optional: make public
+      // await drive.permissions.create({
+      //   fileId: resp.data.id,
+      //   requestBody: { role: "reader", type: "anyone" },
+      //   supportsAllDrives: true,
+      // });
 
       results.push({
         id: resp.data.id,
@@ -127,4 +132,4 @@ async function ensureSubfolder(parentId, name) {
   return created.data.id;
 }
 
-app.listen(PORT, () => console.log(`http://localhost:${PORT}`));
+app.listen(PORT, "0.0.0.0", () => console.log(`Listening on :${PORT}`)); // ✅ binds for Cloud Run
