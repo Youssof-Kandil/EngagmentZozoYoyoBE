@@ -20,12 +20,45 @@ console.log("[CFG] client_id:", CLIENT_ID);
 console.log("[CFG] secret?", !!CLIENT_SECRET, "refresh?", !!REFRESH_TOKEN);
 
 const app = express(); // ✅ create app first
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://engagment-zozo-yoyo.vercel.app",
+  // add any preview domains you actually use, e.g.:
+  // "https://engagment-zozo-yoyo-git-main-youruser.vercel.app",
+  // and any custom domain if you later add one
+];
+
+app.use((req, res, next) => {
+  // helpful logging to confirm what's happening on Android
+  console.log("[REQ]", req.method, req.path, {
+    origin: req.headers.origin,
+    acrm: req.headers["access-control-request-method"],
+    acrh: req.headers["access-control-request-headers"],
+  });
+  next();
+});
+
 app.use(
   cors({
-    origin: ["http://localhost:5173", "https://engagment-zozo-yoyo.vercel.app"],
-    methods: ["POST", "GET", "OPTIONS"],
+    origin(origin, cb) {
+      // Allow same-origin or requests without an Origin header (some webviews do this)
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error(`CORS: origin not allowed: ${origin}`));
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    // Reflect/allow common headers used by browsers during upload
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    // Some Android/in-app browsers dislike 204 for preflight
+    optionsSuccessStatus: 200,
+    maxAge: 86400,
+    // Only set this to true if you actually use credentials on the client
+    credentials: false,
   })
 );
+
+// Ensure Express answers preflight everywhere
+app.options("*", cors());
 
 const upload = multer({ storage: multer.memoryStorage() });
 
