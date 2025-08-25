@@ -10,85 +10,57 @@ const CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
 const REFRESH_TOKEN = (process.env.GOOGLE_REFRESH_TOKEN || "").trim();
 const DRIVE_FOLDER_ID = (process.env.DRIVE_FOLDER_ID || "").trim();
 const PORT = Number(process.env.PORT || 8080);
-
 if (!CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN || !DRIVE_FOLDER_ID) {
   console.error("Missing required env vars. Check .env");
   process.exit(1);
 }
-
-console.log("[CFG] client_id:", CLIENT_ID);
-console.log("[CFG] secret?", !!CLIENT_SECRET, "refresh?", !!REFRESH_TOKEN);
-
-const app = express(); // ✅ create app first
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://engagment-zozo-yoyo.vercel.app",
-  // add any preview domains you actually use, e.g.:
-  // "https://engagment-zozo-yoyo-git-main-youruser.vercel.app",
-  // and any custom domain if you later add one
-];
-
-app.use((req, res, next) => {
-  // helpful logging to confirm what's happening on Android
-  console.log("[REQ]", req.method, req.path, {
-    origin: req.headers.origin,
-    acrm: req.headers["access-control-request-method"],
-    acrh: req.headers["access-control-request-headers"],
-  });
-  next();
-});
+const app = express();
 
 app.use(
   cors({
-    origin(origin, cb) {
-      // Allow same-origin or requests without an Origin header (some webviews do this)
-      if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin)) return cb(null, true);
-      return cb(new Error(`CORS: origin not allowed: ${origin}`));
-    },
-    methods: ["GET", "POST", "OPTIONS"],
-    // Reflect/allow common headers used by browsers during upload
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-    // Some Android/in-app browsers dislike 204 for preflight
-    optionsSuccessStatus: 200,
-    maxAge: 86400,
-    // Only set this to true if you actually use credentials on the client
-    credentials: false,
+    origin: [
+      "http://localhost:5173", // Vite dev
+      "https://engagment-zozo-yoyo.vercel.app", // <-- replace with your real URL
+    ],
+    methods: ["POST", "GET", "OPTIONS"],
   })
 );
 
-// Ensure Express answers preflight everywhere
-app.options("*", cors());
+console.log("[CFG] client_id:", CLIENT_ID);
+console.log("[CFG] secret?", !!CLIENT_SECRET, "refresh?", !!REFRESH_TOKEN);
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 const oauth2 = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET);
 oauth2.setCredentials({ refresh_token: REFRESH_TOKEN });
 
-// ✅ fail fast if auth is misconfigured
+const drive = google.drive({ version: "v3", auth: oauth2 });
 (async () => {
   try {
     const { token } = await oauth2.getAccessToken();
     console.log("[AUTH] access token ok:", !!token);
   } catch (e) {
     console.error("[AUTH] refresh failed:", e.response?.data || e.message);
+    process.exit(1);
   }
 })();
-
-const drive = google.drive({ version: "v3", auth: oauth2 });
-
+// health
 app.get("/", (_, res) => res.send("Drive uploader is running."));
+app.use(cors());
 
+// POST /upload  (multipart/form-data)
 app.post("/upload", upload.array("files", 50), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ ok: false, error: "No files uploaded" });
     }
 
+    // Optional subfolder name under DRIVE_FOLDER_ID
     const subfolderName = (req.body.subfolderName || "").trim();
     let parentId = DRIVE_FOLDER_ID;
-    if (subfolderName)
+    if (subfolderName) {
       parentId = await ensureSubfolder(DRIVE_FOLDER_ID, subfolderName);
+    }
 
     const results = [];
     for (const f of req.files) {
@@ -102,15 +74,8 @@ app.post("/upload", upload.array("files", 50), async (req, res) => {
         requestBody: fileMetadata,
         media,
         fields: "id, name, webViewLink, webContentLink",
-        supportsAllDrives: true,
+        supportsAllDrives: true, // harmless for My Drive; needed if parent is a Shared Drive
       });
-
-      // Optional: make public
-      // await drive.permissions.create({
-      //   fileId: resp.data.id,
-      //   requestBody: { role: "reader", type: "anyone" },
-      //   supportsAllDrives: true,
-      // });
 
       results.push({
         id: resp.data.id,
@@ -164,4 +129,4 @@ async function ensureSubfolder(parentId, name) {
   return created.data.id;
 }
 
-app.listen(PORT, "0.0.0.0", () => console.log(`Listening on :${PORT}`)); // ✅ binds for Cloud Run
+app.listen(PORT, () => console.log(`http://localhost:${PORT}`));
