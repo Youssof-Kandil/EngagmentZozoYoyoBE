@@ -1,0 +1,5 @@
+node_modules
+.env
+client_secret_823636350877-9gq3mnl9h8d41k6a1unc6tri9mknrd9v.apps.googleusercontent.com.json
+google secret.txt
+service-account.json
