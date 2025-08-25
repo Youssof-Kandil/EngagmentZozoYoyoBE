@@ -72,7 +72,6 @@ oauth2.setCredentials({ refresh_token: REFRESH_TOKEN });
     console.log("[AUTH] access token ok:", !!token);
   } catch (e) {
     console.error("[AUTH] refresh failed:", e.response?.data || e.message);
-    process.exit(1);
   }
 })();
 
