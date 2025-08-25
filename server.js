@@ -9,7 +9,7 @@ const CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || "").trim();
 const CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
 const REFRESH_TOKEN = (process.env.GOOGLE_REFRESH_TOKEN || "").trim();
 const DRIVE_FOLDER_ID = (process.env.DRIVE_FOLDER_ID || "").trim();
-const PORT = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || 8080);
 if (!CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN || !DRIVE_FOLDER_ID) {
   console.error("Missing required env vars. Check .env");
   process.exit(1);
